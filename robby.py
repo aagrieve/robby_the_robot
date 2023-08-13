@@ -68,6 +68,9 @@ class QMatrix:
         row = self.dict[str(state)]
         return self.matrix[row, col]
 
+    def get_State_Row(self, state):
+        return self.dict[str(state)]
+
 
 #################################################################################
 
@@ -107,14 +110,15 @@ class Robby:
             best_action = [None, None]
             size = map.shape[0] - 1
 
+            # INSTEAD OF ALL THIS, WE JUST NEED TO COMPARE Q VALUES OF STATES
             # still needs work here, what exactly is the greedy decision to make?
-            if values[0] == "Can":
+            if values[0][1] == "Can":
                 return "Pickup-Can"
             # search for cans in neighbors, the 2nd best option
             for i in range(0, len(values)):
-                if values[i] == "Can":
+                if values[i][1] == "Can":
                     cans.append(i)
-                if values[i] == "Empty":
+                if values[i][1] == "Empty":
                     empty.append(i)
 
             if cans != []:
@@ -145,25 +149,25 @@ class Robby:
             # reward of -5 if crashing into wall
             # each reward total change needs to update q-matrix
             case "Move-North":
-                if values[1] == "Wall":
+                if values[1][1] == "Wall":
                     self.reward_total -= 5
                     return -5
                 else:
                     self.location[1] -= 1
             case "Move-South":
-                if values[2] == "Wall":
+                if values[2][1] == "Wall":
                     self.reward_total -= 5
                     return -5
                 else:
                     self.location[1] += 1
             case "Move-East":
-                if values[3] == "Wall":
+                if values[3][1] == "Wall":
                     self.reward_total -= 5
                     return -5
                 else:
                     self.location[1] += 1
             case "Move-West":
-                if values[4] == "Wall":
+                if values[4][1] == "Wall":
                     self.reward_total -= 5
                 else:
                     self.location[1] -= 1
@@ -181,20 +185,46 @@ class Robby:
         return 0
 
     # looks at current state and returns a list of values of the results of each action, either "Can", "Empty", or "Wall"
-    # this may need to change
+    # this may need to change so that we are observing the qmatrix
+    # could get the qvalue of each action and take the highest
     def observe_Current_State(self, map):
         values = []
 
         # current (values[0])
-        values.append(self.run_Sensors([self.location[0], self.location[1]], map))
+        values.append(
+            [
+                [self.location[0], self.location[1]],
+                self.run_Sensors([self.location[0], self.location[1]], map),
+            ]
+        )
         # north   (values[1])
-        values.append(self.run_Sensors([self.location[0], self.location[1] - 1], map))
+        values.append(
+            [
+                [self.location[0], self.location[1] - 1],
+                self.run_Sensors([self.location[0], self.location[1] - 1], map),
+            ]
+        )
         # south   (values[2])
-        values.append(self.run_Sensors([self.location[0], self.location[1] + 1], map))
+        values.append(
+            [
+                [self.location[0], self.location[1] + 1],
+                self.run_Sensors([self.location[0], self.location[1] + 1], map),
+            ]
+        )
         # east    (values[3])
-        values.append(self.run_Sensors([self.location[0] + 1, self.location[1]], map))
+        values.append(
+            [
+                [self.location[0] + 1, self.location[1]],
+                self.run_Sensors([self.location[0] + 1, self.location[1]], map),
+            ]
+        )
         # west    (values[4])
-        values.append(self.run_Sensors([self.location[0] - 1, self.location[1]], map))
+        values.append(
+            [
+                [self.location[0] - 1, self.location[1]],
+                self.run_Sensors([self.location[0] - 1, self.location[1]], map),
+            ]
+        )
 
         return values
 
