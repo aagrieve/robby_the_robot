@@ -332,19 +332,8 @@ def main():
         curr_Robby = Robby(map)
         for step in range(0, steps):
             # take step (returns [state, action, reward, next_state_qmatrix_vals])
-            # print("\nState Location:")
-            # print(curr_Robby.location)
             state_action_reward = curr_Robby.take_Step(map, epsilon, q_matrix)
 
-            # print("\nState:")
-            # print(state_action_reward[0])
-            # print("Action:")
-            # print(state_action_reward[1])
-            # print("Reward:")
-            # print(state_action_reward[2])
-            # print("Next State:")
-            # print(state_action_reward[3])
-            # update Q(s_t, a_t)
             q_matrix.update_Qmatrix(
                 state_action_reward[0],
                 state_action_reward[1],
