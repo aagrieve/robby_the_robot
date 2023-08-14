@@ -13,27 +13,43 @@ import matplotlib.pyplot as plt
 
 
 class QMatrix:
-    def __init__(self, map_rows, map_cols, discount, eta):
-        self.matrix = np.zeros((100, 5))
-        self.dict = self.fill_dictionary(map_rows, map_cols)
+    def __init__(self, discount, eta):
+        self.dict = self.fill_dictionary()
+        self.matrix = np.zeros((len(self.dict), 5))
         self.discount = discount
         self.eta = eta
 
-    def fill_dictionary(self, map_rows, map_cols):
+    def fill_dictionary(self):
         dict = {}
-        list = []
-        state_num = map_rows * map_cols
-        # def a better way to combine these two loops
-        for i in range(0, map_rows):
-            for j in range(0, map_cols):
-                list.append("[{}, {}]".format(i, j))
-        for count in range(0, state_num):
-            dict[list[count]] = count
+        state_list = []
+
+        for one in range(0, 3):
+            for two in range(0, 3):
+                for three in range(0, 3):
+                    for four in range(0, 3):
+                        for five in range(0, 3):
+                            state_list.append(
+                                str(one) + str(two) + str(three) + str(four) + str(five)
+                            )
+
+        for count in range(0, len(state_list)):
+            dict[state_list[count]] = count
+
         return dict
 
-    def update_matrix(self, state, action, reward, next_states):
-        # find state row in matrix using
-        row = self.dict[str(state)]
+    def update_Qmatrix(self, state, action, reward, next_state):
+        current_q_value = self.get_Q_Value(state, action)
+        max_next = max(self.get_State_Row(next_state))
+
+        new_val = (
+            current_q_value
+            + self.eta * (reward + self.discount * max_next)
+            - current_q_value
+        )
+
+        self.assign_Q_Value(state, action, new_val)
+
+    def assign_Q_Value(self, state, action, new_val):
         match (action):
             case "Pickup-Can":
                 col = 0
@@ -45,32 +61,8 @@ class QMatrix:
                 col = 3
             case "Move-West":
                 col = 4
-
-        # look through next state actions and find the best value
-        best = None
-        best_arr = []
-        for i in range(0, len(next_states)):
-            if best == None:
-                best = next_states[i]
-                best_arr = [i]
-            else:
-                if best < next_states[i]:
-                    best = next_states[i]
-                    best_arr = [i]
-                elif best == next_states[i]:
-                    best_arr.append(i)
-
-        # choose between best vals
-        if len(best_arr) > 1:
-            roll = ran.randrange(0, len(best_arr))
-            max_q = next_states[best_arr[roll]]
-        else:
-            max_q = best
-
-        self.matrix[row, col] += self.eta * (
-            reward + (self.discount * max_q) - self.matrix[row, col]
-        )
-        # print(self.matrix[row, col])
+        row = self.dict[state]
+        self.matrix[row, col] = new_val
 
     def get_Q_Value(self, state, action):
         match (action):
@@ -84,11 +76,11 @@ class QMatrix:
                 col = 3
             case "Move-West":
                 col = 4
-        row = self.dict[str(state)]
+        row = self.dict[state]
         return self.matrix[row, col]
 
     def get_State_Row(self, state):
-        return np.copy(self.matrix[self.dict[str(state)], :])
+        return np.copy(self.matrix[self.dict[state], :])
 
 
 #################################################################################
@@ -99,20 +91,23 @@ class QMatrix:
 
 
 class Robby:
-    def __init__(self):
+    def __init__(self, map):
         self.location = place_robby()
+        self.sensor_string = self.run_Sensors(map)
         self.reward_total = 0
 
     def take_Step(self, map, epsilon, qmatrix):
-        state = self.location
+        state = self.sensor_string
         # observe
         cur_state_action_vals = self.observe_Current_State(qmatrix)
         # choose action
         action = self.choose_Action(cur_state_action_vals, epsilon)
-        # perform action
+        # perform action, updates location and sensor_string if need be
         reward = self.take_Action(action, map)
         # return state-action pair and reward for qmatrix updates
-        return [state, action, reward]
+        next_state = self.sensor_string
+
+        return [state, action, reward, next_state]
 
     # returns action chosen
     def choose_Action(self, values, epsilon):
@@ -172,76 +167,113 @@ class Robby:
                 case 4:
                     return "Move-West"
 
-    # takes action passed in and returns the reward from the action
     def take_Action(self, action, map):
+        reward = 0
         match action:
-            # reward of -5 if crashing into wall
-            # each reward total change needs to update q-matrix
-            case "Move-North":
-                if (
-                    self.run_Sensors([self.location[0], self.location[1] - 1], map)
-                    == "Wall"
-                ):
-                    self.reward_total -= 5
-                    return -5
-                else:
-                    self.location[1] -= 1
-            case "Move-South":
-                if (
-                    self.run_Sensors([self.location[0], self.location[1] + 1], map)
-                    == "Wall"
-                ):
-                    self.reward_total -= 5
-                    return -5
-                else:
-                    self.location[1] += 1
-            case "Move-East":
-                if (
-                    self.run_Sensors([self.location[0] + 1, self.location[1]], map)
-                    == "Wall"
-                ):
-                    self.reward_total -= 5
-                    return -5
-                else:
-                    self.location[0] += 1
-            case "Move-West":
-                if (
-                    self.run_Sensors([self.location[0] - 1, self.location[1]], map)
-                    == "Wall"
-                ):
-                    self.reward_total -= 5
-                else:
-                    self.location[0] -= 1
             case "Pickup-Can":
-                # reward of 10 if successful
-                # reward of -1 if not
-                if self.run_Sensors([self.location[0], self.location[1]], map) == "Can":
+                if self.sensor_string[0] == "0":
+                    # pickup can
                     map[self.location[0], self.location[1]] = 0
+                    # receive reward
                     self.reward_total += 10
-                    return 10
+                    reward = 10
                 else:
                     self.reward_total -= 1
-                    return -1
+                    reward = -1
 
-        return 0
+            case "Move-North":
+                if self.sensor_string[1] == "2":
+                    self.reward_total -= 5
+                    reward = -5
+                else:
+                    self.location[0] -= 1
+
+            case "Move-South":
+                if self.sensor_string[2] == "2":
+                    self.reward_total -= 5
+                    reward = -5
+                else:
+                    self.location[0] += 1
+
+            case "Move-East":
+                if self.sensor_string[3] == "2":
+                    self.reward_total -= 5
+                    reward = -5
+                else:
+                    self.location[1] += 1
+
+            case "Move-West":
+                if self.sensor_string[4] == "2":
+                    self.reward_total -= 5
+                    reward = -5
+                else:
+                    self.location[1] -= 1
+
+        self.update_Sensor_String(map)
+        return reward
 
     # this should really be in qmatrix class
     def observe_Current_State(self, qmatrix):
-        return qmatrix.get_State_Row(self.location)
+        return qmatrix.get_State_Row(self.sensor_string)
 
-    def run_Sensors(self, square_location, map):
+    def update_Sensor_String(self, map):
+        self.sensor_string = self.run_Sensors(map)
+
+    # creates sensor string for qmatrix -- 0: can, 1: empty, 2: wall
+    def run_Sensors(self, map):
+        sensor_string = ""
         size = map.shape[0] - 1
-        if (
-            (square_location[0] > size)
-            or (square_location[0] < 0)
-            or (square_location[1] > size)
-            or (square_location[1] < 0)
-        ):
-            return "Wall"
-        elif map[square_location[0], square_location[1]] == 1:
-            return "Can"
+        # CURR (sensor_string[0])
+        if map[self.location[0], self.location[1]] == 1:
+            sensor_string += "0"
         else:
-            return "Empty"
+            sensor_string += "1"
+
+        # NORTH (sensor_string[1])
+        if self.location[0] - 1 < 0:
+            # WALL
+            sensor_string += "2"
+        elif map[self.location[0] - 1, self.location[1]] == 1:
+            # CAN
+            sensor_string += "0"
+        else:
+            # EMPTY
+            sensor_string += "1"
+
+        # SOUTH (sensor_string[2])
+        if self.location[0] + 1 > size:
+            # WALL
+            sensor_string += "2"
+        elif map[self.location[0] + 1, self.location[1]] == 1:
+            # CAN
+            sensor_string += "0"
+        else:
+            # EMPTY
+            sensor_string += "1"
+
+        # EAST (sensor_string[3])
+        if self.location[1] + 1 > size:
+            # WALL
+            sensor_string += "2"
+        elif map[self.location[0], self.location[1] + 1] == 1:
+            # CAN
+            sensor_string += "0"
+        else:
+            # EMPTY
+            sensor_string += "1"
+
+        # WEST (sensor_string[4])
+        if self.location[1] - 1 < 0:
+            # WALL
+            sensor_string += "2"
+        elif map[self.location[0], self.location[1] - 1] == 1:
+            # CAN
+            sensor_string += "0"
+        else:
+            # EMPTY
+            sensor_string += "1"
+
+        return sensor_string
 
 
 #################################################################################
@@ -284,77 +316,85 @@ def main():
     # setup
     grid = 10
     # not right, rows should be states and columns to actions
-    q_matrix = QMatrix(grid, grid, discount, eta)
+    q_matrix = QMatrix(discount, eta)
     first_map = None
     last_map = None
+
+    fig1, trx = plt.subplots()
+    tr_ep_list = []
+    tr_rew_list = []
 
     # learning
     for episode in range(0, episodes):
         # print("\nEPISODE {}".format(episode))
+        sum_of_rewards = 0
         map = generate_map(grid, grid)
-        curr_Robby = Robby()
+        curr_Robby = Robby(map)
         for step in range(0, steps):
-            print(curr_Robby.reward_total)
-            # print(q_matrix.matrix)
-            # if step == 0:
-            #     first_map = np.copy(map)
-            # print("step {}".format(step))
-            # take step (returns [state, action, reward])
+            # take step (returns [state, action, reward, next_state_qmatrix_vals])
+            # print("\nState Location:")
+            # print(curr_Robby.location)
             state_action_reward = curr_Robby.take_Step(map, epsilon, q_matrix)
-            # observe new state s_t+1
-            new_states = curr_Robby.observe_Current_State(q_matrix)
-            # get max of new_state vals
 
+            # print("\nState:")
+            # print(state_action_reward[0])
+            # print("Action:")
+            # print(state_action_reward[1])
+            # print("Reward:")
+            # print(state_action_reward[2])
+            # print("Next State:")
+            # print(state_action_reward[3])
             # update Q(s_t, a_t)
-            q_matrix.update_matrix(
+            q_matrix.update_Qmatrix(
                 state_action_reward[0],
                 state_action_reward[1],
                 state_action_reward[2],
-                new_states,
+                state_action_reward[3],
             )
 
-            # if step == steps - 1:
-            #     last_map = np.copy(map)
+            # NEED A PLOT FOR TRAINING
+            sum_of_rewards += state_action_reward[2]
+        if episode % 50 == 0:
+            epsilon -= 0.005
+        if episode % 50 == 0:
+            tr_ep_list.append(episode)
+            tr_rew_list.append(sum_of_rewards)
 
-        # update epsilon
-        if epsilon != 0:
-            epsilon -= 0.000025
-
-    # print("First Map")
-    # print(first_map)
-
-    # print("Last Map")
-    # print(last_map)
-    # print(np.array_equal(first_map, last_map))
-    print(q_matrix.matrix)
-    # print(map)
+    trx.plot(tr_ep_list, tr_rew_list)
+    trx.set(
+        xlim=(0, 5000),
+        xticks=np.arange(0, 5000, 500),
+        ylim=(-10, 650),
+        yticks=np.arange(0, 600, 100),
+    )
+    plt.xlabel("Episode")
+    plt.ylabel("Sum of Rewards")
+    plt.show()
 
     # test episodes using QMatrix
     # plot point every 100 episodes
     # calc everage sum of rewards per episode
-    # epsilon = 0.1
-    # fig, ax = plt.subplots()
-    # for episode in range(0, episodes):
-    #     map = generate_map(grid, grid)
-    #     curr_Robby = Robby()
-    #     reward_total = 0
-    #     for step in range(0, steps):
-    #         # take step (returns [state, action, reward])
-    #         state_action_reward = curr_Robby.take_Step(map, epsilon, q_matrix)
-    #         reward_total += state_action_reward[2]
+    epsilon = 0.1
+    sums = []
+    sum_total = 0
+    for episode in range(0, episodes):
+        map = generate_map(grid, grid)
+        curr_Robby = Robby(map)
+        reward_total = 0
+        for step in range(0, steps):
+            # take step (returns [state, action, reward])
+            state_action_reward = curr_Robby.take_Step(map, epsilon, q_matrix)
+            reward_total += state_action_reward[2]
+        sums.append(reward_total)
+        sum_total += reward_total
 
-    #     if episode % 100 == 0:
-    #         ax.plot(episode, reward_total, linewidth=100.0)
-    #     print(reward_total)
+    rewards_average = sum_total / len(sums)
+    standard_dev = np.std(sums)
 
-    # ax.set(
-    #     xlim=(0, 5000),
-    #     xticks=np.arange(0, 5000, 500),
-    #     ylim=(-50, 50),
-    #     yticks=np.arange(-50, 50, 5.0),
-    # )
-
-    # plt.show()
+    print("Average")
+    print(rewards_average)
+    print("Standard Deviation")
+    print(standard_dev)
 
 
 if __name__ == "__main__":
